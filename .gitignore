@@ -1,0 +1,23 @@
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local databases and generated local data
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Local verification artifacts
+artifacts/

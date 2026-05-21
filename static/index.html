@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LSM Scholarship Management Portal</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">哈</span>
+          <span>Scholarship<br />Management<br />Portal</span>
+        </div>
+        <nav class="nav" id="nav"></nav>
+        <button class="version-log-dot" id="versionLogDot" title="Version Log" aria-label="Open version log"></button>
+      </aside>
+
+      <main class="shell">
+        <header class="topbar">
+          <div class="page-title-block">
+            <h1 id="pageTitle">Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="lang-toggle" id="languageToggle" type="button" aria-label="Switch language"><span class="lang-toggle-knob"></span><span>中</span><span>EN</span></button>
+            <p class="date-stamp" id="currentDate">New York · —</p>
+          </div>
+        </header>
+
+        <section id="view"></section>
+      </main>
+    </div>
+
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">Record</p>
+          <h2 id="drawerTitle">Add New</h2>
+        </div>
+        <button class="icon-button" id="closeDrawer" title="Close">×</button>
+      </div>
+      <div class="type-switch" id="typeSwitch"></div>
+      <form id="recordForm"></form>
+    </aside>
+
+    <div class="version-stamp" id="versionStamp">v2.0</div>
+    <div class="toast" id="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
