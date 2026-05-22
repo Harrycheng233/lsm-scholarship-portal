@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from zoneinfo import ZoneInfo
 
 from ..config import settings
 
 
-CURRENT_STATUSES = ("Active", "Pending", "Completed", "Pause", "Paused")
-PENDING_STATUSES = ("Pending", "Awaiting Agreement")
+CURRENT_STATUSES = ("Active", "Completed", "Paused")
+PENDING_STATUSES = ("Awaiting Agreement",)
 FOLLOWUP_STATUSES = ("Active",)
 CONTINENTS = ("AS", "EU", "AF", "NA", "SA", "OC")
 
@@ -34,6 +35,30 @@ def academic_year_from_award_time(award_time: str, offset: int = 0) -> str:
     return f"{start}-{start + 1}"
 
 
+def parse_iso_date(value: str | None) -> dt.date | None:
+    value = clean(value)
+    if not value:
+        return None
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def add_years(value: dt.date, years: int) -> dt.date:
+    try:
+        return value.replace(year=value.year + years)
+    except ValueError:
+        return value.replace(year=value.year + years, day=28)
+
+
+def issue_date_from_award_time(award_time: str | None, year_of_support: int = 1) -> dt.date | None:
+    base = parse_iso_date(award_time)
+    if not base:
+        return None
+    return add_years(base, max(1, int(year_of_support or 1)) - 1)
+
+
 def month_minus_one(year: int, month: int) -> tuple[int, int]:
     if month == 1:
         return year - 1, 12
@@ -41,6 +66,11 @@ def month_minus_one(year: int, month: int) -> tuple[int, int]:
 
 
 def new_york_today() -> dt.date:
+    override = os.environ.get("LSM_TODAY")
+    if override:
+        parsed = parse_iso_date(override)
+        if parsed:
+            return parsed
     return dt.datetime.now(ZoneInfo(settings.timezone)).date()
 
 

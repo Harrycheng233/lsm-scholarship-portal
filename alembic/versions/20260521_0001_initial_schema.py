@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text()),
         sa.Column("created_at", sa.Text()),
         sa.Column("program_department", sa.Text()),
-        sa.Column("scholarship_type", sa.Text(), nullable=False, server_default="Annual"),
+        sa.Column("scholarship_type", sa.Text(), nullable=False, server_default="Endowed"),
         sa.Column("agreement_date", sa.Text()),
     )
     op.create_table(
@@ -39,7 +39,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("school_id", sa.Integer(), sa.ForeignKey("schools.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.Text(), nullable=False),
-        sa.Column("program_type", sa.Text(), nullable=False, server_default="Annual Grant"),
+        sa.Column("program_type", sa.Text(), nullable=False, server_default="Endowed"),
         sa.Column("funding_model", sa.Text(), nullable=False, server_default="Annual Appropriation"),
         sa.Column("established_year", sa.Integer()),
         sa.Column("status", sa.Text(), nullable=False, server_default="Active"),

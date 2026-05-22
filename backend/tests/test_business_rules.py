@@ -24,7 +24,7 @@ def session():
     return Session()
 
 
-def add_school(db, name, department, status="Active"):
+def add_school(db, name, department, status="Active", agreement_date="2026-01-01", scholarship_type="Endowed", duration_years=1):
     result = create_institution(
         db,
         {
@@ -32,25 +32,42 @@ def add_school(db, name, department, status="Active"):
             "program_department": department,
             "country": "United States",
             "continent": "NA",
-            "scholarship_type": "Annual",
+            "scholarship_type": scholarship_type,
             "status": status,
-            "agreement_date": "2026-01-01",
+            "agreement_date": agreement_date,
+            "duration_years": duration_years,
             "notes": "",
         },
     )
     return result["id"]
 
 
-def test_dashboard_deduplicates_departments_under_same_institution():
+def add_scholar(db, school_id, name, award_date, support_years=1):
+    return create_scholar(
+        db,
+        {
+            "full_name": name,
+            "gender": "Female",
+            "major": "Art",
+            "contact": f"{name.lower().replace(' ', '.')}@example.org",
+            "award_date": award_date,
+            "school_id": school_id,
+            "scholarship_plan": "Multi-year" if support_years > 1 else "One-time",
+            "support_years": support_years,
+        },
+    )
+
+
+def test_dashboard_counts_each_department_partnership_record():
     db = session()
     add_school(db, "Columbia University", "School of Art")
     add_school(db, "  columbia   university ", "School of Design")
 
     data = bootstrap(db)
 
-    assert data["dashboard"]["summary"]["institutions"] == 1
+    assert data["dashboard"]["summary"]["institutions"] == 2
     assert data["dashboard"]["summary"]["countries"] == 1
-    assert len(data["dashboard"]["details"]["institutions"]) == 1
+    assert len(data["dashboard"]["details"]["institutions"]) == 2
 
 
 def test_awaiting_agreement_is_pending_but_not_partnered():
@@ -63,9 +80,9 @@ def test_awaiting_agreement_is_pending_but_not_partnered():
     assert data["dashboard"]["summary"]["pendingPrograms"] == 1
 
 
-def test_pause_counts_as_partnered_but_is_excluded_from_followups():
+def test_paused_counts_as_partnered_but_is_excluded_from_followups():
     db = session()
-    school_id = add_school(db, "Paused School", "Department", status="Pause")
+    school_id = add_school(db, "Paused School", "Department", status="Paused")
     next_month = (dt.date.today().replace(day=1) + dt.timedelta(days=35)).replace(day=15)
     create_scholar(
         db,
@@ -85,6 +102,90 @@ def test_pause_counts_as_partnered_but_is_excluded_from_followups():
 
     assert data["dashboard"]["summary"]["institutions"] == 1
     assert data["dashboard"]["followups"] == []
+
+
+def test_status_rules_for_partnered_pending_and_followups(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    add_school(db, "Active University", "Department", status="Active", agreement_date="2025-05-15")
+    add_school(db, "Pause University", "Department", status="Paused", agreement_date="2025-05-20")
+    add_school(db, "Completed University", "Department", status="Completed", agreement_date="2025-05-21")
+    add_school(db, "Awaiting University", "Department", status="Awaiting Agreement", agreement_date="2025-05-22")
+
+    data = bootstrap(db)
+
+    assert data["dashboard"]["summary"]["institutions"] == 3
+    assert data["dashboard"]["summary"]["pendingPrograms"] == 1
+    assert [row["institution_name"] for row in data["dashboard"]["followups"]] == ["Active University"]
+
+
+def test_maya_chen_issue_progress_uses_award_date(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Lifecycle University", "Department", agreement_date="2025-05-15")
+    add_scholar(db, school_id, "Maya Chen", "2025-11-12", support_years=3)
+
+    data = bootstrap(db)
+    scholar = next(row for row in data["scholars"] if row["full_name"] == "Maya Chen")
+
+    assert data["dashboard"]["summary"]["scholarshipsIssued"] == 1
+    assert scholar["scholarship_progress"] == "1/3"
+    assert scholar["next_issue_date"] == "2026-11-12"
+    assert data["dashboard"]["details"]["scholarshipsIssued"] == [
+        {
+            "scholar_name": "Maya Chen",
+            "institution_name": "Lifecycle University",
+            "program_department": "Department",
+            "award_date": "2025-11-12",
+            "progress": "1/3",
+            "issued": 1,
+            "total": 3,
+            "next_issue_date": "2026-11-12",
+        }
+    ]
+
+
+def test_aiko_tanaka_issue_progress_and_next_issue(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Lifecycle University", "Department")
+    add_scholar(db, school_id, "Aiko Tanaka", "2024-06-18", support_years=3)
+
+    data = bootstrap(db)
+    scholar = next(row for row in data["scholars"] if row["full_name"] == "Aiko Tanaka")
+
+    assert scholar["scholarship_progress"] == "2/3"
+    assert scholar["next_issue_date"] == "2026-06-18"
+
+
+def test_multiple_scholars_same_institution_cycle_count_individually(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Columbia University", "School of Art", agreement_date="2025-05-15")
+    add_scholar(db, school_id, "Xiao Zhang", "2025-09-01")
+    add_scholar(db, school_id, "Xiao Wang", "2025-09-01")
+    add_scholar(db, school_id, "Xiao Li", "2025-09-01")
+
+    data = bootstrap(db)
+
+    assert data["dashboard"]["summary"]["recipients"] == 3
+    assert data["dashboard"]["summary"]["scholarshipsIssued"] == 3
+    assert data["dashboard"]["summary"]["institutions"] == 1
+
+
+def test_followup_reminders_use_agreement_month_and_status(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    add_school(db, "May Active University", "Department", status="Active", agreement_date="2025-05-15")
+    add_school(db, "June Active University", "Department", status="Active", agreement_date="2024-06-10")
+    add_school(db, "May Pause University", "Department", status="Paused", agreement_date="2025-05-20")
+    add_school(db, "May Awaiting University", "Department", status="Awaiting Agreement", agreement_date="2025-05-20")
+
+    data = bootstrap(db)
+    names = [row["institution_name"] for row in data["dashboard"]["followups"]]
+
+    assert names == ["May Active University", "June Active University"]
+    assert data["dashboard"]["followupCounts"] == {"thisMonth": 1, "nextMonth": 1}
 
 
 def test_multi_year_awards_use_scholar_award_date_not_agreement_date():
@@ -109,6 +210,74 @@ def test_multi_year_awards_use_scholar_award_date_not_agreement_date():
     assert awards == ["2025-2026", "2026-2027", "2027-2028"]
 
 
+def test_one_time_institution_completes_after_scholar_association():
+    db = session()
+    school_id = add_school(db, "One Time University", "Department", scholarship_type="One-time", status="Active")
+    add_scholar(db, school_id, "One Time Scholar", "2026-09-01")
+
+    data = bootstrap(db)
+    institution = next(row for row in data["institutions"] if row["id"] == school_id)
+
+    assert institution["status"] == "Completed"
+
+
+def test_multi_year_institution_completes_after_duration(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(
+        db,
+        "Term University",
+        "Department",
+        scholarship_type="Multi-year",
+        status="Active",
+        agreement_date="2024-05-01",
+        duration_years=2,
+    )
+
+    data = bootstrap(db)
+    institution = next(row for row in data["institutions"] if row["id"] == school_id)
+
+    assert institution["status"] == "Completed"
+
+
+def test_dashboard_recipient_details_order_newest_first():
+    db = session()
+    school_id = add_school(db, "Recipient University", "Department")
+    add_scholar(db, school_id, "Older Scholar", "2025-01-01")
+    add_scholar(db, school_id, "Newer Scholar", "2026-01-01")
+
+    data = bootstrap(db)
+
+    assert [row["scholar_name"] for row in data["dashboard"]["details"]["recipients"]] == ["Newer Scholar", "Older Scholar"]
+
+
+def test_statistics_annual_activity_uses_agreement_and_issue_dates(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Stats University", "Department", agreement_date="2024-03-01")
+    add_scholar(db, school_id, "Stats Scholar", "2025-11-12", support_years=3)
+
+    annual = {row["year"]: row for row in bootstrap(db)["statistics"]["annual"]}
+
+    assert annual["2024"]["institution_count"] == 1
+    assert annual["2024"]["scholarship_count"] == 0
+    assert annual["2025"]["institution_count"] == 0
+    assert annual["2025"]["scholarship_count"] == 1
+
+
+def test_statistics_continent_map_counts_schools_scholars_and_issued(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Map University", "Department", agreement_date="2024-03-01")
+    add_scholar(db, school_id, "Map Scholar", "2025-11-12")
+
+    continents = {row["continent"]: row for row in bootstrap(db)["statistics"]["continentStats"]}
+
+    assert continents["NA"]["institution_count"] == 1
+    assert continents["NA"]["scholar_count"] == 1
+    assert continents["NA"]["scholarship_count"] == 1
+
+
 def test_manual_entry_validation_rejects_invalid_institution_continent():
     db = session()
 
@@ -120,7 +289,7 @@ def test_manual_entry_validation_rejects_invalid_institution_continent():
                 "program_department": "Department",
                 "country": "United States",
                 "continent": "XX",
-                "scholarship_type": "Annual",
+                "scholarship_type": "Endowed",
                 "status": "Active",
             },
         )

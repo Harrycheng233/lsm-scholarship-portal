@@ -70,6 +70,14 @@ button {
   background: var(--ink);
   color: var(--paper);
   font-size: 15px;
+  overflow: hidden;
+  padding: 6px;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .nav {
@@ -129,6 +137,23 @@ h1 {
   font-weight: 800;
 }
 
+.page-title-block {
+  display: inline-grid;
+  justify-self: start;
+  justify-items: end;
+  width: max-content;
+}
+
+.page-subtitle {
+  min-height: 16px;
+  margin: 4px 2px 0 0;
+  color: #E45E5E;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+
 h2 {
   font-size: 28px;
   line-height: 1;
@@ -148,6 +173,12 @@ h3 {
   min-height: 44px;
   padding: 0 18px;
   font-weight: 750;
+}
+
+.add-record-button {
+  min-width: 72px;
+  line-height: 1.08;
+  white-space: normal;
 }
 
 .secondary-action {
@@ -382,7 +413,6 @@ table {
   font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
   pointer-events: none;
 }
 
@@ -428,6 +458,16 @@ table {
   font-weight: 700;
 }
 
+.chart-legend-inline {
+  gap: 18px;
+}
+
+.chart-legend-inline span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .legend-row strong {
   margin-left: auto;
 }
@@ -441,13 +481,15 @@ table {
 }
 
 .chart-wide,
-.map-wrap {
+.map-wrap,
+.world-map-wrap {
   width: 100%;
   overflow-x: auto;
 }
 
 .annual-svg,
-.map-svg {
+.map-svg,
+.world-map-svg {
   width: 100%;
   min-width: 760px;
 }
@@ -465,12 +507,57 @@ table {
   fill: var(--ink);
 }
 
-.map-node:hover circle {
-  fill: #E45E5E;
+.map-ocean {
+  fill: #B1885F;
+  opacity: 0.6;
 }
 
-.map-node:hover text {
+.continent-dots {
+  transition: fill 160ms ease, filter 160ms ease, opacity 160ms ease;
+  pointer-events: none;
+}
+
+.continent-hit-dots {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.world-continent:hover .continent-dots,
+.world-continent:focus .continent-dots {
+  fill: #E45E5E;
+  opacity: 1;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.18));
+}
+
+.world-continent:hover text,
+.world-continent:focus text {
   fill: var(--paper);
+}
+
+.map-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.map-stat {
+  border: 1px solid var(--line);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.map-stat strong {
+  color: #E45E5E;
+  font-size: 15px;
+}
+
+.map-stat span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chart-note {
@@ -546,7 +633,13 @@ table {
 }
 
 .metric-button:hover {
-  background: #faf8f0;
+  background: #E45E5E;
+  color: var(--paper);
+}
+
+.metric-button:hover span,
+.metric-button:hover strong {
+  color: var(--paper);
 }
 
 .metric strong {
@@ -583,6 +676,32 @@ table {
 
 .panel-body {
   padding: 18px;
+}
+
+.followup-head {
+  align-items: flex-start;
+}
+
+.followup-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.followup-summary .this-month,
+.followup-record.this-month strong,
+.followup-record.this-month span {
+  color: #E45E5E;
+}
+
+.followup-summary .next-month,
+.followup-record.next-month strong,
+.followup-record.next-month span {
+  color: #1E73BE;
 }
 
 .toolbar {
@@ -636,6 +755,18 @@ th {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.table-sort {
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  padding: 0;
+  min-height: 0;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 tr:hover td {
@@ -832,6 +963,12 @@ form {
   font-size: 13px;
 }
 
+.subdetail {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .continent-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -903,6 +1040,7 @@ form {
 .detail-row strong {
   font-size: 15px;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .detail-table table {

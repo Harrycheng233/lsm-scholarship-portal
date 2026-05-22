@@ -17,15 +17,17 @@ const state = {
     dashboard: { summary: {}, followups: [], continentCounts: {}, details: {} },
   },
   filters: {},
+  sorts: {
+    institutionsDate: "asc",
+    scholarsDate: "asc",
+  },
 };
 
 const views = ["Dashboard", "Institutions", "Scholars", "Statistics", "Users", "Audit Log"];
-const addTypes = ["Institution", "Scholar"];
-
 const vocab = {
   continents: ["AS", "EU", "AF", "NA", "SA", "OC"],
-  institution_status: ["Active", "Pending", "Awaiting Agreement", "Pause", "Completed"],
-  scholarship_type: ["Endowed", "One-time", "Multi-year", "Annual"],
+  institution_status: ["Active", "Paused", "Awaiting Agreement", "Completed"],
+  scholarship_type: ["One-time", "Endowed", "Multi-year"],
   gender: ["Prefer not to say", "Female", "Male", "Other"],
   scholarship_plan: ["One-time", "Multi-year"],
 };
@@ -42,16 +44,21 @@ const zhMap = {
   "Audit Log": "操作记录",
   "Version Log": "版本记录",
   "Current Partner Institutions": "当前合作院校",
-  "Partnered Institutions": "合作院校",
+  "Partnered Institutions": "当前合作院校",
   "Scholarship Recipients": "奖学金学者",
+  Countries: "覆盖国家",
+  "Countries Represented": "覆盖国家",
   "Countries represented": "覆盖国家",
+  "Pending Agreements": "待处理项目",
   "Pending Programs": "待处理项目",
   "Scholarships Issued": "已发放奖学金",
   "Upcoming Recipient Follow-ups": "近期学者跟进",
   "Partner Institutions by Continent": "合作院校洲别分布",
-  "Export Excel": "导出 Excel",
+  "Export Excel": "导出Excel",
   Institution: "院校",
+  Institutions: "院校",
   Scholar: "学者",
+  Scholars: "学者",
   User: "用户",
   "Add Scholar": "添加学者",
   "Add User": "添加用户",
@@ -71,7 +78,41 @@ const zhMap = {
   "No major data yet.": "暂无专业数据。",
   "No issued scholarship records yet.": "暂无已发放奖学金记录。",
   "No country data yet.": "暂无国家数据。",
+  "No map data yet.": "暂无地图数据。",
+  "welcome back": "欢迎回来",
   "Version Iteration Log": "版本迭代记录",
+  "This month": "本月",
+  "Next month": "下月",
+  "Follow-up time": "跟进时间",
+  "Agreement date": "签约时间",
+  "Dep/School": "院系/项目",
+  "Program / Department": "院系/项目",
+  "Scholarship Announced (total)": "奖学金学者总数",
+  "Scholar Name": "学者姓名",
+  Country: "国家",
+  Continent: "大洲",
+  Type: "类型",
+  Status: "状态",
+  "Agreement Date": "签约日期",
+  Contact: "联系方式",
+  Scholarship: "奖学金",
+  Actions: "操作",
+  View: "查看",
+  Edit: "编辑",
+  Delete: "删除",
+  "Issued Date": "发放日期",
+  "Award Date": "获奖日期",
+  Progress: "进度",
+  "Next Issue": "下次发放",
+  "Next issue date": "下次发放日期",
+  "Schools": "院校",
+  "Scholars": "学者",
+  "North America": "北美洲",
+  "South America": "南美洲",
+  Europe: "欧洲",
+  Africa: "非洲",
+  Asia: "亚洲",
+  Oceania: "大洋洲",
 };
 
 function t(text) {
@@ -148,6 +189,8 @@ function render() {
   renderUserContext();
   renderMeta();
   $("#pageTitle").textContent = viewLabel(state.view);
+  const subtitle = $("#pageSubtitle");
+  if (subtitle) subtitle.textContent = state.view === "Dashboard" ? t("welcome back") : "";
   const view = $("#view");
   view.innerHTML = "";
   if (state.view === "Dashboard") view.append(renderDashboard());
@@ -176,7 +219,7 @@ function renderMeta() {
   const date = $("#currentDate");
   if (date) date.textContent = `New York · ${formatDate(state.data.meta?.current_date || new Date().toISOString().slice(0, 10))}`;
   const stamp = $("#versionStamp");
-  if (stamp) stamp.textContent = state.data.meta?.version || "v2.0";
+  if (stamp) stamp.textContent = `${state.data.meta?.version || "v2.0"} · Chirui Cheng All Rights Reserved`;
   const dot = $("#versionLogDot");
   if (dot) dot.classList.toggle("active", state.view === "Version Log");
 }
@@ -205,9 +248,8 @@ function renderUserContext() {
 function statusClass(status = "") {
   const s = status.toLowerCase();
   if (s.includes("active")) return "active";
-  if (s.includes("pending")) return "pending";
   if (s.includes("await")) return "awaiting";
-  if (s.includes("pause")) return "pending";
+  if (s.includes("paus")) return "pending";
   if (s.includes("completed")) return "completed";
   return "";
 }
@@ -221,18 +263,18 @@ function renderDashboard() {
   const wrap = el("div");
   wrap.innerHTML = `
     <div class="dashboard-actions">
-      ${canExport() ? `<button class="primary-action" id="exportExcel">${esc(t("Export Excel"))} / 导出 Excel</button>` : ""}
+      ${canExport() ? `<button class="primary-action" id="exportExcel">${esc(t("Export Excel"))}</button>` : ""}
     </div>
     <section class="metric-grid five">
-      ${metric("Current Partner Institutions", summary.institutions || 0, "institutions")}
-      ${metric("Scholarship Recipients", summary.recipients || 0)}
-      ${metric("Countries represented", summary.countries || 0, "countries")}
-      ${metric("Pending Programs", summary.pendingPrograms || 0, "pendingPrograms")}
-      ${metric("Scholarships Issued", summary.scholarshipsIssued || 0)}
+      ${metric("Partnered Institutions", summary.institutions || 0, "institutions")}
+      ${metric("Countries", summary.countries || 0, "countries")}
+      ${metric("Scholarship Recipients", summary.recipients || 0, "recipients")}
+      ${metric("Scholarships Issued", summary.scholarshipsIssued || 0, "scholarshipsIssued")}
+      ${metric("Pending Agreements", summary.pendingPrograms || 0, "pendingPrograms")}
     </section>
     <section class="split">
       <div class="panel">
-        <div class="panel-head"><h3>${esc(t("Upcoming Recipient Follow-ups"))}</h3>${canEdit() ? `<button class="secondary-action" data-add="Scholar">${esc(t("Add Scholar"))}</button>` : ""}</div>
+        <div class="panel-head followup-head"><h3>${esc(t("Upcoming Recipient Follow-ups"))}</h3>${followupCountersHtml()}</div>
         <div class="panel-body">${followupsHtml()}</div>
       </div>
       <div class="panel">
@@ -241,7 +283,6 @@ function renderDashboard() {
       </div>
     </section>
   `;
-  wireAddButtons(wrap);
   wrap.querySelector("#exportExcel")?.addEventListener("click", exportExcel);
   wrap.querySelectorAll("[data-detail]").forEach((button) => {
     button.addEventListener("click", () => openDashboardDetail(button.dataset.detail));
@@ -285,25 +326,46 @@ function followupsHtml() {
     return `<div class="empty">${esc(t("No follow-ups due in the next month. Active institutions with annual scholar cycles will appear here."))}</div>`;
   }
   return `<div class="record-list">${items.map((item) => `
-    <div class="record">
-      <strong>${esc(item.institution_name)}</strong>
-      <span>${esc(item.followup_date)} · ${esc(item.days_until)} days · last recipient cycle ${esc(item.last_award_time)}</span>
+    <div class="record followup-record ${item.cycle === "thisMonth" ? "this-month" : "next-month"}">
+      <strong>${esc(t(item.cycle === "thisMonth" ? "This month" : "Next month"))} · ${esc(item.institution_name)} · ${esc(item.program_department || "—")}</strong>
+      <span>${esc(t("Follow-up time"))}: ${esc(formatDate(item.followup_date))} · ${esc(t("Agreement date"))}: ${esc(formatDate(item.agreement_date))}</span>
     </div>
   `).join("")}</div>`;
+}
+
+function followupCountersHtml() {
+  const counts = state.data.dashboard.followupCounts || {};
+  return `
+    <div class="followup-summary">
+      <span class="this-month">${esc(t("This month"))}: <strong>${esc(counts.thisMonth || 0)}</strong></span>
+      <span class="next-month">${esc(t("Next month"))}: <strong>${esc(counts.nextMonth || 0)}</strong></span>
+    </div>`;
 }
 
 function continentCountsHtml() {
   const counts = state.data.dashboard.continentCounts || {};
   return vocab.continents.map((code) => `
     <div class="continent-stat">
-      <strong>${code}</strong>
+      <strong>${esc(continentLabel(code))}</strong>
       <span>${counts[code] || 0}</span>
     </div>
   `).join("");
 }
 
+function continentLabel(code) {
+  const labels = {
+    AS: "Asia",
+    EU: "Europe",
+    AF: "Africa",
+    NA: "North America",
+    SA: "South America",
+    OC: "Oceania",
+  };
+  return state.lang === "zh" ? t(labels[code] || code) : code;
+}
+
 function renderInstitutions() {
-  const rows = filtered(state.data.institutions, ["name", "program_department", "country", "continent", "scholarship_type", "status"]);
+  const rows = sortByDate(filtered(state.data.institutions, ["name", "program_department", "country", "continent", "scholarship_type", "status"]), "agreement_date", state.sorts.institutionsDate);
   return listPage({
     type: "Institution",
     filterKey: "institutions",
@@ -315,25 +377,25 @@ function renderInstitutions() {
       ["Continent", (r) => esc(r.continent)],
       ["Type", (r) => esc(r.scholarship_type)],
       ["Status", (r) => pill(r.status)],
-      ["Agreement Date", (r) => esc(r.agreement_date || "—")],
+      ["Agreement Date", (r) => esc(formatDate(r.agreement_date))],
     ],
   });
 }
 
 function renderScholars() {
-  const rows = filtered(state.data.scholars, ["full_name", "major", "contact", "institution_name", "award_date", "scholarship_plan"]);
+  const rows = sortByDate(filtered(state.data.scholars, ["full_name", "major", "contact", "institution_name", "award_date", "scholarship_plan"]), "award_date", state.sorts.scholarsDate);
   return listPage({
     type: "Scholar",
     filterKey: "scholars",
     rows,
     columns: [
       ["Scholar", (r) => esc(r.full_name)],
-      ["Sex", (r) => esc(r.gender)],
+      ["Gender", (r) => esc(r.gender)],
       ["Major", (r) => esc(r.major || "—")],
       ["Contact", (r) => esc(r.contact || "—")],
-      ["Award Date", (r) => esc(r.award_date || "—")],
+      ["Issued Date", (r) => esc(formatDate(r.award_date))],
       ["Institution", (r) => esc(r.institution_name || "—")],
-      ["Scholarship", (r) => `${esc(r.scholarship_plan)} · ${r.scholarships_issued || 0} issued`],
+      ["Scholarship", (r) => scholarScholarshipCell(r)],
     ],
   });
 }
@@ -431,11 +493,12 @@ async function submitLogin(event) {
 }
 
 function listPage({ type, filterKey, rows, columns }) {
+  const showAddButton = ["Institution", "Scholar"].includes(type) || canManage(type);
   const wrap = el("div");
   wrap.innerHTML = `
     <div class="toolbar">
       <input class="search" id="${filterKey}Search" placeholder="${esc(t(`Search ${type.toLowerCase()} records`))}" value="${esc(state.filters[filterKey] || "")}" />
-      ${canManage(type) ? `<button class="primary-action" data-add="${type}">+ ${esc(t(`Add ${type}`))}</button>` : ""}
+      ${showAddButton ? `<button class="primary-action add-record-button" data-add="${type}">${addButtonLabel(type)}</button>` : ""}
     </div>
     ${rows.length ? tableHtml(rows, columns, type) : `<div class="empty">${esc(t(`No records yet. Use Add ${type} to start.`))}</div>`}
   `;
@@ -445,29 +508,68 @@ function listPage({ type, filterKey, rows, columns }) {
     render();
   });
   wireAddButtons(wrap);
+  wireSortButtons(wrap);
   wireRowActions(wrap, type, rows);
   return wrap;
+}
+
+function addButtonLabel(type) {
+  if (state.lang === "zh" && type === "Institution") return "添加<br>院校";
+  if (state.lang === "zh" && type === "Scholar") return "添加<br>学者";
+  return esc(t(`Add ${type}`));
 }
 
 function tableHtml(rows, columns, type) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${columns.map(([label]) => `<th>${label}</th>`).join("")}<th class="action-col">Actions</th></tr></thead>
+        <thead><tr>${columns.map(([label]) => headerCell(label, type)).join("")}<th class="action-col">${esc(t("Actions"))}</th></tr></thead>
         <tbody>
           ${rows.map((row) => `
             <tr>
               ${columns.map(([, get]) => `<td>${get(row)}</td>`).join("")}
               <td class="row-actions">
-                <button class="secondary-action compact" data-view="${type}" data-id="${row.id}">View</button>
-                ${canManage(type) ? `<button class="secondary-action compact" data-edit="${type}" data-id="${row.id}">Edit</button>` : ""}
-                ${canManage(type) && type === "User" && row.is_active ? `<button class="danger-action compact" data-delete="${type}" data-id="${row.id}">Deactivate</button>` : ""}
+                <button class="secondary-action compact" data-view="${type}" data-id="${row.id}">${esc(t("View"))}</button>
+                ${canManage(type) ? `<button class="secondary-action compact" data-edit="${type}" data-id="${row.id}">${esc(t("Edit"))}</button>` : ""}
+                ${canManage(type) && type === "User" && row.is_active ? `<button class="danger-action compact" data-delete="${type}" data-id="${row.id}">${esc(t("Delete"))}</button>` : ""}
               </td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     </div>`;
+}
+
+function headerCell(label, type) {
+  if (type === "Institution" && label === "Agreement Date") {
+    return `<th><button class="table-sort" type="button" data-sort-date="institutionsDate">${esc(t(label))} ${sortIcon(state.sorts.institutionsDate)}</button></th>`;
+  }
+  if (type === "Scholar" && label === "Issued Date") {
+    return `<th><button class="table-sort" type="button" data-sort-date="scholarsDate">${esc(t(label))} ${sortIcon(state.sorts.scholarsDate)}</button></th>`;
+  }
+  return `<th>${esc(t(label))}</th>`;
+}
+
+function sortIcon(direction) {
+  return direction === "asc" ? "▾" : "▴";
+}
+
+function sortByDate(rows, key, direction) {
+  return [...rows].sort((a, b) => {
+    const av = Date.parse(a[key] || "9999-12-31");
+    const bv = Date.parse(b[key] || "9999-12-31");
+    return direction === "asc" ? av - bv : bv - av;
+  });
+}
+
+function wireSortButtons(root) {
+  root.querySelectorAll("[data-sort-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.sortDate;
+      state.sorts[key] = state.sorts[key] === "asc" ? "desc" : "asc";
+      render();
+    });
+  });
 }
 
 function wireRowActions(root, type, rows) {
@@ -520,7 +622,7 @@ function openDashboardDetail(kind) {
 
 function openDrawer() {
   const modeTitle = state.drawerMode === "create" ? "Add" : state.drawerMode === "edit" ? "Edit" : "View";
-  $("#drawerTitle").textContent = state.drawerMode === "detail" ? dashboardDetailTitle(state.currentRecord.kind) : `${modeTitle} ${state.addType}`;
+  $("#drawerTitle").textContent = state.drawerMode === "detail" ? t(dashboardDetailTitle(state.currentRecord.kind)) : `${modeTitle} ${t(state.addType)}`;
   renderTypeSwitch();
   renderDrawerBody();
   $("#drawer").classList.add("open");
@@ -537,23 +639,8 @@ function closeDrawer() {
 
 function renderTypeSwitch() {
   const switcher = $("#typeSwitch");
-  if (state.drawerMode !== "create" || !addTypes.includes(state.addType)) {
-    switcher.innerHTML = "";
-    switcher.style.display = "none";
-    return;
-  }
-  switcher.style.display = "";
   switcher.innerHTML = "";
-  addTypes.forEach((type) => {
-    const button = el("button", { type: "button", class: type === state.addType ? "active" : "" }, [document.createTextNode(type)]);
-    button.addEventListener("click", () => {
-      state.addType = type;
-      $("#drawerTitle").textContent = `Add ${type}`;
-      renderTypeSwitch();
-      renderDrawerBody();
-    });
-    switcher.append(button);
-  });
+  switcher.style.display = "none";
 }
 
 function renderDrawerBody() {
@@ -575,13 +662,20 @@ function renderDrawerBody() {
     plan.addEventListener("change", () => refreshSupportYears(form));
     refreshSupportYears(form);
   }
+  const type = form.querySelector("#scholarship_type");
+  if (type) {
+    type.addEventListener("change", () => refreshInstitutionDuration(form));
+    refreshInstitutionDuration(form);
+  }
 }
 
 function dashboardDetailTitle(kind) {
   return {
     institutions: "Partner Institutions",
     countries: "Countries Represented",
-    pendingPrograms: "Pending Programs",
+    pendingPrograms: "Pending Agreements",
+    scholarshipsIssued: "Scholarships Issued",
+    recipients: "Scholarship Recipients",
   }[kind] || "Details";
 }
 
@@ -589,23 +683,41 @@ function dashboardDetailHtml(kind) {
   const details = state.data.dashboard.details || {};
   if (kind === "institutions") {
     const rows = (details.institutions && details.institutions.length) ? details.institutions : clientInstitutionDetails();
-    return detailList(rows, ["Institution", "Country", "Continent", "Scholarship Announced(total)"], (row) => [
+    return detailList(rows, ["Institution", "Dep/School", "Scholarship Announced (total)"], (row) => [
       row.name,
-      row.country,
-      row.continent,
-      row.scholarships_issued,
+      row.program_department || "—",
+      row.scholar_count ?? row.scholarships_issued ?? 0,
     ]);
   }
   if (kind === "countries") {
     const rows = (details.countries && details.countries.length) ? details.countries : clientCountryDetails();
     return detailList(rows, ["Country", "Partner Institutions"], (row) => [row.country, row.institution_count]);
   }
+  if (kind === "scholarshipsIssued") {
+    const rows = (details.scholarshipsIssued && details.scholarshipsIssued.length) ? details.scholarshipsIssued : clientScholarshipIssuedDetails();
+    return detailList(rows, ["Scholar", "Institution", "Award Date", "Progress", "Next Issue"], (row) => [
+      row.scholar_name,
+      row.program_department ? `${row.institution_name} · ${row.program_department}` : row.institution_name,
+      formatDate(row.award_date),
+      row.progress,
+      formatDate(row.next_issue_date),
+    ]);
+  }
+  if (kind === "recipients") {
+    const rows = details.recipients || [];
+    return detailList(rows, ["Scholar Name", "Institution", "Dep/School", "Issued Date"], (row) => [
+      row.scholar_name,
+      row.institution_name,
+      row.program_department || "—",
+      formatDate(row.issued_date),
+    ]);
+  }
   const rows = (details.pendingPrograms && details.pendingPrograms.length) ? details.pendingPrograms : clientPendingDetails();
   return detailList(rows, ["Institution", "Program / Department", "Status", "Agreement Date"], (row) => [
     row.name,
     row.program_department || "—",
     row.status,
-    row.agreement_date || "—",
+    formatDate(row.agreement_date),
   ]);
 }
 
@@ -614,19 +726,11 @@ function normInstitutionName(name) {
 }
 
 function dashboardEligible(row) {
-  return ["Active", "Pending", "Pause", "Paused", "Completed"].includes(row.status);
+  return ["Active", "Paused", "Completed"].includes(row.status);
 }
 
 function clientInstitutionDetails() {
-  const byName = {};
-  state.data.institutions.filter(dashboardEligible).forEach((row) => {
-    const key = normInstitutionName(row.name);
-    if (!byName[key]) {
-      byName[key] = { name: row.name, country: row.country, continent: row.continent, scholarships_issued: 0 };
-    }
-    byName[key].scholarships_issued += Number(row.scholarships_issued || 0);
-  });
-  return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+  return state.data.institutions.filter(dashboardEligible).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function clientCountryDetails() {
@@ -639,8 +743,22 @@ function clientCountryDetails() {
 
 function clientPendingDetails() {
   return state.data.institutions
-    .filter((row) => ["Pending", "Awaiting Agreement"].includes(row.status))
+    .filter((row) => ["Awaiting Agreement"].includes(row.status))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function clientScholarshipIssuedDetails() {
+  return (state.data.scholars || [])
+    .filter((row) => Number(row.scholarships_issued || 0) > 0)
+    .map((row) => ({
+      scholar_name: row.full_name,
+      institution_name: row.institution_name,
+      program_department: "",
+      award_date: row.award_date,
+      progress: row.scholarship_progress || `${row.scholarships_issued || 0}/${row.scholarships_total || 1}`,
+      next_issue_date: row.next_issue_date,
+    }))
+    .sort((a, b) => a.scholar_name.localeCompare(b.scholar_name));
 }
 
 function detailList(rows, headers, mapRow) {
@@ -648,7 +766,7 @@ function detailList(rows, headers, mapRow) {
   return `
     <div class="table-wrap detail-table">
       <table>
-        <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+        <thead><tr>${headers.map((header) => `<th>${esc(t(header))}</th>`).join("")}</tr></thead>
         <tbody>${rows.map((row) => `<tr>${mapRow(row).map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody>
       </table>
     </div>
@@ -664,19 +782,18 @@ function detailHtml(type, record) {
     ["Continent", record.continent],
     ["Type", record.scholarship_type],
     ["Status", record.status],
-    ["Agreement Date", record.agreement_date || "—"],
-    ["Scholarship Announced(total)", record.scholarships_issued || 0],
+    ["Agreement Date", formatDate(record.agreement_date)],
+    ["Duration", record.scholarship_type === "Multi-year" ? record.duration_years : "—"],
+    ["Scholarship Announced(total)", record.scholar_count ?? record.scholarships_issued ?? 0],
     ["Notes", record.notes || "—"],
   ] : type === "Scholar" ? [
     ["Full Name", record.full_name],
     ["Sex", record.gender],
     ["Major", record.major || "—"],
     ["Contact", record.contact || "—"],
-    ["Award Date", record.award_date || "—"],
+    ["Award Date", formatDate(record.award_date)],
     ["Institution", record.institution_name || "—"],
-    ["Scholarship Duration", record.scholarship_plan],
-    ["Number of Years", record.support_years],
-    ["Scholarships Issued", record.scholarships_issued || 0],
+    ["Scholarship Duration", scholarScholarshipDisplay(record)],
     ["Notes", record.notes || "—"],
   ] : [
     ["Email", record.email],
@@ -701,7 +818,8 @@ function input(name, label, attrs = {}) {
   const min = attrs.min ? `min="${attrs.min}"` : "";
   const max = attrs.max ? `max="${attrs.max}"` : "";
   const readonly = attrs.readonly ? "readonly" : "";
-  return `<div class="field"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${type}" value="${esc(value)}" ${required} ${min} ${max} ${readonly} /></div>`;
+  const list = attrs.list ? `list="${attrs.list}"` : "";
+  return `<div class="field"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${type}" value="${esc(value)}" ${required} ${min} ${max} ${readonly} ${list} /></div>`;
 }
 
 function select(name, label, options, attrs = {}) {
@@ -721,22 +839,59 @@ function textarea(name, label, value = "") {
   return `<div class="field"><label for="${name}">${label}</label><textarea id="${name}" name="${name}">${esc(value)}</textarea></div>`;
 }
 
+function normalizeSuggestion(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function suggestions(rows, key) {
+  const seen = new Set();
+  return (rows || []).map((row) => row[key]).filter((value) => {
+    const normalized = normalizeSuggestion(value);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  }).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function datalist(id, values) {
+  return `<datalist id="${id}">${values.map((value) => `<option value="${esc(value)}"></option>`).join("")}</datalist>`;
+}
+
+function scholarScholarshipDisplay(record) {
+  const progress = record.scholarship_progress || `${record.scholarships_issued || 0}/${record.scholarships_total || 1}`;
+  const next = record.next_issue_date ? `\n${t("Next issue date")}: ${formatDate(record.next_issue_date)}` : "";
+  return `${record.scholarship_plan}\n${progress} issued${next}`;
+}
+
+function scholarScholarshipCell(record) {
+  const progress = record.scholarship_progress || `${record.scholarships_issued || 0}/${record.scholarships_total || 1}`;
+  const next = record.next_issue_date ? `<br><span class="subdetail">${esc(t("Next issue date"))}: ${esc(formatDate(record.next_issue_date))}</span>` : "";
+  return `${esc(record.scholarship_plan)}<br><span class="subdetail">${esc(progress)} issued</span>${next}`;
+}
+
 function formHtml(type, record = {}) {
   if (type === "Institution") {
+    const institutionSuggestions = datalist("institutionNameOptions", suggestions(state.data.institutions, "name"));
+    const departmentSuggestions = datalist("departmentOptions", suggestions(state.data.institutions, "program_department"));
+    const countrySuggestions = datalist("countryOptions", suggestions(state.data.institutions, "country"));
     return `
-      ${input("name", "Institution", { required: true, value: record.name })}
-      ${input("program_department", "Program / Department", { value: record.program_department })}
-      <div class="form-grid">${input("country", "Country", { required: true, value: record.country })}${select("continent", "Continent", vocab.continents, { required: true, value: record.continent })}</div>
+      ${institutionSuggestions}${departmentSuggestions}${countrySuggestions}
+      ${input("name", "Institution", { required: true, value: record.name, list: "institutionNameOptions" })}
+      ${input("program_department", "Dep/School", { value: record.program_department, list: "departmentOptions" })}
+      <div class="form-grid">${input("country", "Country", { required: true, value: record.country, list: "countryOptions" })}${select("continent", "Continent", vocab.continents, { required: true, value: record.continent })}</div>
       <div class="form-grid">${select("scholarship_type", "Type", vocab.scholarship_type, { required: true, value: record.scholarship_type })}${select("status", "Status", vocab.institution_status, { required: true, value: record.status })}</div>
+      ${input("duration_years", "Duration (years)", { type: "number", value: record.duration_years || "1", min: "1", max: "50" })}
       ${input("agreement_date", "Agreement Date", { type: "date", value: record.agreement_date })}
       ${textarea("notes", "Notes", record.notes)}
       ${actions(type)}
     `;
   }
   if (type === "Scholar") {
+    const majorSuggestions = datalist("majorOptions", suggestions(state.data.scholars, "major"));
     return `
+      ${majorSuggestions}
       ${input("full_name", "Full Name", { required: true, value: record.full_name })}
-      <div class="form-grid">${select("gender", "Sex", vocab.gender, { required: true, value: record.gender })}${input("major", "Major", { value: record.major })}</div>
+      <div class="form-grid">${select("gender", "Sex", vocab.gender, { required: true, value: record.gender })}${input("major", "Major", { value: record.major, list: "majorOptions" })}</div>
       ${input("contact", "Contact", { value: record.contact })}
       <div class="form-grid">${input("award_date", "Award Date", { type: "date", required: true, value: record.award_date })}${select("school_id", "Institution", state.data.institutions.map((s) => ({ id: s.id, name: s.program_department ? `${s.name} · ${s.program_department}` : s.name })), { required: true, value: record.school_id })}</div>
       <div class="form-grid">${select("scholarship_plan", "Scholarship duration", vocab.scholarship_plan, { required: true, value: record.scholarship_plan })}${input("support_years", "Number of years", { type: "number", value: record.support_years || "1", min: "1", max: "10" })}</div>
@@ -767,6 +922,15 @@ function refreshSupportYears(form) {
   const multi = form.scholarship_plan.value === "Multi-year";
   years.disabled = !multi;
   years.value = multi ? Math.max(Number(years.value || 2), 2) : 1;
+}
+
+function refreshInstitutionDuration(form) {
+  const duration = form.querySelector("#duration_years");
+  const type = form.querySelector("#scholarship_type");
+  if (!duration || !type) return;
+  const multi = type.value === "Multi-year";
+  duration.disabled = !multi;
+  duration.value = multi ? Math.max(Number(duration.value || 1), 1) : 1;
 }
 
 async function submitForm(event) {
@@ -881,31 +1045,58 @@ function annualChart(rows) {
     const scholarships = Number(row.scholarship_count || 0);
     const instH = (inst / maxValue) * plotHeight;
     const schH = (scholarships / maxValue) * plotHeight;
-    return `<g><rect x="${x0 - barWidth - 4}" y="${padding.top + plotHeight - instH}" width="${barWidth}" height="${instH}" fill="#FFE2B5"></rect><rect x="${x0 + 4}" y="${padding.top + plotHeight - schH}" width="${barWidth}" height="${schH}" fill="#AA7766"></rect><text x="${x0}" y="${height - 18}" text-anchor="middle" class="axis-label">${esc(row.year)}</text></g>`;
+    return `<g>
+      <rect x="${x0 - barWidth - 4}" y="${padding.top + plotHeight - instH}" width="${barWidth}" height="${instH}" fill="#FFE2B5"></rect>
+      <text x="${x0 - barWidth / 2 - 4}" y="${padding.top + plotHeight - instH - 6}" text-anchor="middle" class="bar-label">${inst}</text>
+      <rect x="${x0 + 4}" y="${padding.top + plotHeight - schH}" width="${barWidth}" height="${schH}" fill="#AA7766"></rect>
+      <text x="${x0 + barWidth / 2 + 4}" y="${padding.top + plotHeight - schH - 6}" text-anchor="middle" class="bar-label">${scholarships}</text>
+      <text x="${x0}" y="${height - 18}" text-anchor="middle" class="axis-label">${esc(row.year)}</text>
+    </g>`;
   }).join("");
   return `<div class="chart-wide"><div class="chart-legend-inline"><span><i style="background:#FFE2B5"></i>${esc(t("Institutions"))}</span><span><i style="background:#AA7766"></i>${esc(t("Scholarships Issued"))}</span></div><svg class="annual-svg" viewBox="0 0 ${width} ${height}"><line x1="${padding.left}" y1="${padding.top + plotHeight}" x2="${width - padding.right}" y2="${padding.top + plotHeight}" class="axis-line"></line>${bars}</svg></div>`;
 }
 
-function countryShade(value, max) {
+function continentShade(value, max) {
   if (!value) return "#E3E0DD";
   const scale = max ? value / max : 0;
-  if (scale > 0.8) return "#111111";
-  if (scale > 0.6) return "#3A3A3A";
-  if (scale > 0.4) return "#6A6662";
-  if (scale > 0.2) return "#9C9893";
-  return "#C8C4BF";
+  if (scale > 0.75) return "#393331";
+  if (scale > 0.5) return "#7E5E58";
+  if (scale > 0.25) return "#B78376";
+  return "#D7B4A9";
 }
 
-function countryMap(rows) {
+function continentMap(rows) {
   const data = rows || [];
-  if (!data.length) return `<div class="empty">${esc(t("No country data yet."))}</div>`;
+  if (!data.length) return `<div class="empty">${esc(t("No map data yet."))}</div>`;
+  const byContinent = Object.fromEntries(data.map((row) => [row.continent, row]));
   const max = Math.max(1, ...data.map((row) => Number(row.scholarship_count || 0)));
-  const nodes = data.map((row, index) => {
-    const x = 100 + (index % 6) * 130;
-    const y = 90 + Math.floor(index / 6) * 90;
-    return `<g class="map-node"><circle cx="${x}" cy="${y}" r="${14 + Math.min(18, Number(row.scholarship_count || 0) * 2)}" fill="${countryShade(Number(row.scholarship_count || 0), max)}" stroke="var(--ink)" stroke-width="1"></circle><text x="${x}" y="${y + 4}" text-anchor="middle" class="map-label">${esc(String(row.country || "").slice(0, 3).toUpperCase())}</text><title>${esc(row.country)} · ${row.institution_count} · ${row.scholarship_count}</title></g>`;
+  const shapes = [
+    { code: "NA", label: "North America", tx: 190, ty: 188 },
+    { code: "SA", label: "South America", tx: 306, ty: 374 },
+    { code: "EU", label: "Europe", tx: 526, ty: 150 },
+    { code: "AF", label: "Africa", tx: 548, ty: 314 },
+    { code: "AS", label: "Asia", tx: 760, ty: 206 },
+    { code: "OC", label: "Oceania", tx: 904, ty: 444 },
+  ];
+  const dotsByContinent = window.CONTINENT_DOTS || {};
+  const continents = shapes.map((shape) => {
+    const row = byContinent[shape.code] || { institution_count: 0, scholar_count: 0, scholarship_count: 0 };
+    const title = `${shape.label}: ${row.institution_count} ${t("Schools")}, ${row.scholarship_count} ${t("Scholarships Issued")}, ${row.scholar_count} ${t("Scholars")}`;
+    const fill = continentShade(Number(row.scholarship_count || 0), max);
+    const points = dotsByContinent[shape.code] || [];
+    const hitDots = points.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5.2"></circle>`).join("");
+    const dots = points.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2"></circle>`).join("");
+    return `<g class="world-continent" tabindex="0">
+      <g class="continent-hit-dots">${hitDots}</g>
+      <g class="continent-dots" fill="${fill}">${dots}</g>
+      <title>${esc(title)}</title>
+    </g>`;
   }).join("");
-  return `<div class="map-wrap"><svg class="map-svg" viewBox="0 0 920 340">${nodes}</svg><p class="chart-note">${state.lang === "zh" ? "颜色越深表示已发放奖学金记录越多。" : "Darker marks indicate more issued scholarship records."}</p></div>`;
+  const legend = shapes.map((shape) => {
+    const row = byContinent[shape.code] || { institution_count: 0, scholar_count: 0, scholarship_count: 0 };
+    return `<div class="map-stat"><strong>${esc(continentLabel(shape.code))}</strong><span>${esc(t("Schools"))}: ${row.institution_count}</span><span>${esc(t("Scholarships Issued"))}: ${row.scholarship_count}</span><span>${esc(t("Scholars"))}: ${row.scholar_count}</span></div>`;
+  }).join("");
+  return `<div class="world-map-wrap"><svg class="world-map-svg" viewBox="0 0 1000 588" role="img" aria-label="${esc(t("Scholarship Map"))}"><rect class="map-ocean" x="0" y="0" width="1000" height="588"></rect>${continents}</svg><div class="map-stats">${legend}</div></div>`;
 }
 
 function renderStatistics() {
@@ -917,7 +1108,7 @@ function renderStatistics() {
       <div class="panel"><div class="panel-head"><h3>${esc(t("Major"))}</h3></div><div class="panel-body">${pieChart(stats.majorCounts || [], "Major")}</div></div>
     </section>
     <section class="panel stats-section"><div class="panel-head"><h3>${esc(t("Annual Activity"))}</h3></div><div class="panel-body">${annualChart(stats.annual || [])}</div></section>
-    <section class="panel stats-section"><div class="panel-head"><h3>${esc(t("Scholarship Map"))}</h3></div><div class="panel-body">${countryMap(stats.countryStats || [])}</div></section>
+    <section class="panel stats-section"><div class="panel-head"><h3>${esc(t("Scholarship Map"))}</h3></div><div class="panel-body">${continentMap(stats.continentStats || [])}</div></section>
   `;
   return wrap;
 }
