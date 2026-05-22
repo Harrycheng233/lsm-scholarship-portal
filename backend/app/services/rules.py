@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from ..config import settings
 
 
-CURRENT_STATUSES = ("Active", "Completed", "Pause", "Paused")
+CURRENT_STATUSES = ("Active", "Completed", "Paused")
 PENDING_STATUSES = ("Awaiting Agreement",)
 FOLLOWUP_STATUSES = ("Active",)
 CONTINENTS = ("AS", "EU", "AF", "NA", "SA", "OC")

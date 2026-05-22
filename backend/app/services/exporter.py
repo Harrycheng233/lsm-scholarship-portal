@@ -18,14 +18,15 @@ INSTITUTION_COLUMNS = [
     ("Type", "scholarship_type"),
     ("Status", "status"),
     ("Agreement Date", "agreement_date"),
-    ("Scholarship Announced(total)", "scholarships_issued"),
+    ("Duration Years", "duration_years"),
+    ("Scholarship Announced(total)", "scholar_count"),
     ("Notes", "notes"),
     ("Created At", "created_at"),
 ]
 
 SCHOLAR_COLUMNS = [
     ("Full Name", "full_name"),
-    ("Sex", "gender"),
+    ("Gender", "gender"),
     ("Major", "major"),
     ("Contact", "contact"),
     ("Award Date", "award_date"),
