@@ -24,7 +24,7 @@ def session():
     return Session()
 
 
-def add_school(db, name, department, status="Active"):
+def add_school(db, name, department, status="Active", agreement_date="2026-01-01"):
     result = create_institution(
         db,
         {
@@ -34,11 +34,27 @@ def add_school(db, name, department, status="Active"):
             "continent": "NA",
             "scholarship_type": "Annual",
             "status": status,
-            "agreement_date": "2026-01-01",
+            "agreement_date": agreement_date,
             "notes": "",
         },
     )
     return result["id"]
+
+
+def add_scholar(db, school_id, name, award_date, support_years=1):
+    return create_scholar(
+        db,
+        {
+            "full_name": name,
+            "gender": "Female",
+            "major": "Art",
+            "contact": f"{name.lower().replace(' ', '.')}@example.org",
+            "award_date": award_date,
+            "school_id": school_id,
+            "scholarship_plan": "Multi-year" if support_years > 1 else "One-time",
+            "support_years": support_years,
+        },
+    )
 
 
 def test_dashboard_deduplicates_departments_under_same_institution():
@@ -85,6 +101,90 @@ def test_pause_counts_as_partnered_but_is_excluded_from_followups():
 
     assert data["dashboard"]["summary"]["institutions"] == 1
     assert data["dashboard"]["followups"] == []
+
+
+def test_status_rules_for_partnered_pending_and_followups(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    add_school(db, "Active University", "Department", status="Active", agreement_date="2025-05-15")
+    add_school(db, "Pause University", "Department", status="Pause", agreement_date="2025-05-20")
+    add_school(db, "Completed University", "Department", status="Completed", agreement_date="2025-05-21")
+    add_school(db, "Awaiting University", "Department", status="Awaiting Agreement", agreement_date="2025-05-22")
+
+    data = bootstrap(db)
+
+    assert data["dashboard"]["summary"]["institutions"] == 3
+    assert data["dashboard"]["summary"]["pendingPrograms"] == 1
+    assert [row["institution_name"] for row in data["dashboard"]["followups"]] == ["Active University"]
+
+
+def test_maya_chen_issue_progress_uses_award_date(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Lifecycle University", "Department", agreement_date="2025-05-15")
+    add_scholar(db, school_id, "Maya Chen", "2025-11-12", support_years=3)
+
+    data = bootstrap(db)
+    scholar = next(row for row in data["scholars"] if row["full_name"] == "Maya Chen")
+
+    assert data["dashboard"]["summary"]["scholarshipsIssued"] == 1
+    assert scholar["scholarship_progress"] == "1/3"
+    assert scholar["next_issue_date"] == "2026-11-12"
+    assert data["dashboard"]["details"]["scholarshipsIssued"] == [
+        {
+            "scholar_name": "Maya Chen",
+            "institution_name": "Lifecycle University",
+            "program_department": "Department",
+            "award_date": "2025-11-12",
+            "progress": "1/3",
+            "issued": 1,
+            "total": 3,
+            "next_issue_date": "2026-11-12",
+        }
+    ]
+
+
+def test_aiko_tanaka_issue_progress_and_next_issue(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Lifecycle University", "Department")
+    add_scholar(db, school_id, "Aiko Tanaka", "2024-06-18", support_years=3)
+
+    data = bootstrap(db)
+    scholar = next(row for row in data["scholars"] if row["full_name"] == "Aiko Tanaka")
+
+    assert scholar["scholarship_progress"] == "2/3"
+    assert scholar["next_issue_date"] == "2026-06-18"
+
+
+def test_multiple_scholars_same_institution_cycle_count_individually(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    school_id = add_school(db, "Columbia University", "School of Art", agreement_date="2025-05-15")
+    add_scholar(db, school_id, "Xiao Zhang", "2025-09-01")
+    add_scholar(db, school_id, "Xiao Wang", "2025-09-01")
+    add_scholar(db, school_id, "Xiao Li", "2025-09-01")
+
+    data = bootstrap(db)
+
+    assert data["dashboard"]["summary"]["recipients"] == 3
+    assert data["dashboard"]["summary"]["scholarshipsIssued"] == 3
+    assert data["dashboard"]["summary"]["institutions"] == 1
+
+
+def test_followup_reminders_use_agreement_month_and_status(monkeypatch):
+    monkeypatch.setenv("LSM_TODAY", "2026-05-19")
+    db = session()
+    add_school(db, "May Active University", "Department", status="Active", agreement_date="2025-05-15")
+    add_school(db, "June Active University", "Department", status="Active", agreement_date="2024-06-10")
+    add_school(db, "May Pause University", "Department", status="Pause", agreement_date="2025-05-20")
+    add_school(db, "May Awaiting University", "Department", status="Awaiting Agreement", agreement_date="2025-05-20")
+
+    data = bootstrap(db)
+    names = [row["institution_name"] for row in data["dashboard"]["followups"]]
+
+    assert names == ["May Active University", "June Active University"]
+    assert data["dashboard"]["followupCounts"] == {"thisMonth": 1, "nextMonth": 1}
 
 
 def test_multi_year_awards_use_scholar_award_date_not_agreement_date():

@@ -11,12 +11,14 @@ from .rules import (
     CURRENT_STATUSES,
     FOLLOWUP_STATUSES,
     PENDING_STATUSES,
+    add_years,
     academic_year_from_award_time,
     clean,
     default_program_name,
     institution_key,
+    issue_date_from_award_time,
     new_york_today,
-    next_followup_date,
+    parse_iso_date,
     split_name,
 )
 
@@ -72,28 +74,61 @@ def create_awards_for_scholar(db: Session, scholar_id: int, school_id: int, awar
     db.flush()
 
 
+def award_issue_date(award: Award) -> dt.date | None:
+    return issue_date_from_award_time(award.scholar.award_time, award.year_of_support)
+
+
+def issued_award_count(awards: list[Award], today: dt.date | None = None) -> int:
+    today = today or new_york_today()
+    return sum(1 for award in awards if (award_issue_date(award) or dt.date.max) <= today)
+
+
+def scholar_issue_summary(scholar: Scholar, today: dt.date | None = None) -> dict:
+    today = today or new_york_today()
+    awards = sorted(scholar.awards, key=lambda award: (award.year_of_support, award.id))
+    total = max(1, int(scholar.support_years or 1), len(awards))
+    issued = issued_award_count(awards, today)
+    next_issue = None
+    for year in range(1, total + 1):
+        issue_date = issue_date_from_award_time(scholar.award_time, year)
+        if issue_date and issue_date > today:
+            next_issue = issue_date
+            break
+    return {
+        "issued": issued,
+        "total": total,
+        "progress": f"{issued}/{total}",
+        "next_issue_date": next_issue.isoformat() if next_issue else "",
+    }
+
+
+def school_issued_count(db: Session, school_id: int, today: dt.date | None = None) -> int:
+    today = today or new_york_today()
+    awards = db.scalars(select(Award).join(Program, Program.id == Award.program_id).where(Program.school_id == school_id)).all()
+    return issued_award_count(list(awards), today)
+
+
 def institution_rows(db: Session) -> list[dict]:
     rows = []
+    today = new_york_today()
     schools = db.scalars(select(School).order_by(School.name)).all()
     for school in schools:
-        issued = db.scalar(
-            select(func.count(Award.id)).join(Program, Program.id == Award.program_id).where(Program.school_id == school.id)
-        )
         item = row_dict(
             school,
             ["id", "name", "program_department", "country", "continent", "scholarship_type", "status", "agreement_date", "notes", "created_at"],
         )
-        item["scholarships_issued"] = issued or 0
+        item["scholarships_issued"] = school_issued_count(db, school.id, today)
         rows.append(item)
     return rows
 
 
 def scholar_rows(db: Session) -> list[dict]:
     result = []
+    today = new_york_today()
     scholars = db.scalars(select(Scholar).order_by(Scholar.full_name)).all()
     for scholar in scholars:
         school = scholar.school
-        issued = db.scalar(select(func.count(Award.id)).where(Award.scholar_id == scholar.id)) or 0
+        issue_summary = scholar_issue_summary(scholar, today)
         item = row_dict(
             scholar,
             [
@@ -119,19 +154,26 @@ def scholar_rows(db: Session) -> list[dict]:
         item["institution_name"] = school.name if school else None
         item["country"] = school.country if school else None
         item["continent"] = school.continent if school else None
-        item["scholarships_issued"] = issued
+        item["scholarships_issued"] = issue_summary["issued"]
+        item["scholarships_total"] = issue_summary["total"]
+        item["scholarship_progress"] = issue_summary["progress"]
+        item["next_issue_date"] = issue_summary["next_issue_date"]
         result.append(item)
     return result
 
 
 def award_rows(db: Session) -> list[dict]:
+    today = new_york_today()
     awards = db.scalars(select(Award).order_by(Award.academic_year.desc(), Award.id.desc())).all()
     result = []
     for award in awards:
         item = row_dict(award, ["id", "scholar_id", "program_id", "academic_year", "new_or_renewal", "year_of_support", "status", "notes", "created_at"])
+        issue_date = award_issue_date(award)
         item["scholar_name"] = award.scholar.full_name
         item["program_name"] = award.program.name
         item["institution_name"] = award.program.school.name
+        item["issue_date"] = issue_date.isoformat() if issue_date else ""
+        item["issued"] = bool(issue_date and issue_date <= today)
         result.append(item)
     return result
 
@@ -178,11 +220,15 @@ def statistics(db: Session) -> dict:
         bucket = country_buckets.setdefault(country, {"country": country, "continent": clean(scholar.get("continent")), "institution_keys": set(), "scholar_ids": set(), "scholarship_count": 0})
         bucket["scholar_ids"].add(scholar["id"])
 
+    today = new_york_today()
     awards = db.scalars(select(Award)).all()
     for award in awards:
         school = award.program.school
         scholar = award.scholar
         if not school or school.status not in CURRENT_STATUSES:
+            continue
+        issue_date = award_issue_date(award)
+        if not issue_date or issue_date > today:
             continue
         year = (award.academic_year or "")[:4]
         if year:
@@ -275,6 +321,7 @@ def validate_scholar_payload(db: Session, payload: dict) -> dict:
 
 
 def dashboard(db: Session) -> dict:
+    today = new_york_today()
     active_rows = []
     for row in institution_rows(db):
         if row["status"] in CURRENT_STATUSES:
@@ -303,44 +350,77 @@ def dashboard(db: Session) -> dict:
             continent_counts[code] += 1
 
     pending_programs = [row for row in institution_rows(db) if row["status"] in PENDING_STATUSES]
+    issued_awards = db.scalars(select(Award)).all()
+    issued_count = issued_award_count(list(issued_awards), today)
     summary = {
         "institutions": len(by_institution),
         "recipients": db.scalar(select(func.count(Scholar.id))) or 0,
         "countries": len(country_counts),
         "pendingPrograms": len(pending_programs),
-        "scholarshipsIssued": db.scalar(select(func.count(Award.id))) or 0,
+        "scholarshipsIssued": issued_count,
     }
 
-    today = new_york_today()
     upcoming = []
+    followup_counts = {"thisMonth": 0, "nextMonth": 0}
+    next_month = 1 if today.month == 12 else today.month + 1
+    next_month_year = today.year + 1 if today.month == 12 else today.year
     schools = db.scalars(select(School).where(School.status.in_(FOLLOWUP_STATUSES))).all()
     for school in schools:
-        last_award_time = db.scalar(select(func.max(Scholar.award_time)).where(Scholar.school_id == school.id, Scholar.award_time.is_not(None), Scholar.award_time != ""))
-        if not last_award_time:
+        agreement_date = parse_iso_date(school.agreement_date)
+        if not agreement_date:
             continue
-        due = next_followup_date(last_award_time, today)
-        days = (due - today).days
-        if 0 <= days <= 35:
+        bucket = None
+        follow_year = today.year
+        if agreement_date.month == today.month:
+            bucket = "thisMonth"
+        elif agreement_date.month == next_month:
+            bucket = "nextMonth"
+            follow_year = next_month_year
+        if bucket:
+            due = add_years(agreement_date, follow_year - agreement_date.year)
+            followup_counts[bucket] += 1
             upcoming.append(
                 {
                     "school_id": school.id,
                     "institution_name": school.name,
+                    "program_department": school.program_department,
                     "country": school.country,
                     "continent": school.continent,
                     "status": school.status,
-                    "last_award_time": last_award_time,
+                    "agreement_date": school.agreement_date,
+                    "cycle": bucket,
                     "followup_date": due.isoformat(),
-                    "days_until": days,
+                    "days_until": (due - today).days,
                 }
             )
     upcoming.sort(key=lambda x: x["followup_date"])
+
+    scholarship_details = []
+    for scholar in db.scalars(select(Scholar).order_by(Scholar.full_name)).all():
+        school = scholar.school
+        summary_row = scholar_issue_summary(scholar, today)
+        if summary_row["issued"] <= 0:
+            continue
+        scholarship_details.append(
+            {
+                "scholar_name": scholar.full_name,
+                "institution_name": school.name if school else "",
+                "program_department": school.program_department if school else "",
+                "award_date": scholar.award_time,
+                "progress": summary_row["progress"],
+                "issued": summary_row["issued"],
+                "total": summary_row["total"],
+                "next_issue_date": summary_row["next_issue_date"],
+            }
+        )
 
     details = {
         "institutions": sorted(by_institution.values(), key=lambda row: row["name"]),
         "countries": [{"country": country, "institution_count": count} for country, count in sorted(country_counts.items())],
         "pendingPrograms": sorted(pending_programs, key=lambda row: (row["status"], row["name"])),
+        "scholarshipsIssued": scholarship_details,
     }
-    return {"summary": summary, "followups": upcoming[:8], "continentCounts": continent_counts, "details": details}
+    return {"summary": summary, "followups": upcoming[:8], "followupCounts": followup_counts, "continentCounts": continent_counts, "details": details}
 
 
 def collections(db: Session) -> dict:
@@ -420,7 +500,7 @@ def create_scholar(db: Session, payload: dict) -> dict:
     db.flush()
     create_awards_for_scholar(db, scholar.id, data["school_id"], data["award_time"], data["support_years"])
     db.commit()
-    return {"ok": True, "id": scholar.id, "scholarships_issued": data["support_years"]}
+    return {"ok": True, "id": scholar.id, "scholarships_issued": scholar_issue_summary(scholar)["issued"]}
 
 
 def update_scholar(db: Session, scholar_id: int, payload: dict) -> dict:
@@ -443,7 +523,7 @@ def update_scholar(db: Session, scholar_id: int, payload: dict) -> dict:
     scholar.notes = data["notes"]
     create_awards_for_scholar(db, scholar_id, data["school_id"], data["award_time"], data["support_years"])
     db.commit()
-    return {"ok": True, "id": scholar_id, "scholarships_issued": data["support_years"]}
+    return {"ok": True, "id": scholar_id, "scholarships_issued": scholar_issue_summary(scholar)["issued"]}
 
 
 def delete_institution(db: Session, institution_id: int) -> dict:

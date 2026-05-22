@@ -228,7 +228,7 @@ function renderDashboard() {
       ${metric("Scholarship Recipients", summary.recipients || 0)}
       ${metric("Countries represented", summary.countries || 0, "countries")}
       ${metric("Pending Programs", summary.pendingPrograms || 0, "pendingPrograms")}
-      ${metric("Scholarships Issued", summary.scholarshipsIssued || 0)}
+      ${metric("Scholarships Issued", summary.scholarshipsIssued || 0, "scholarshipsIssued")}
     </section>
     <section class="split">
       <div class="panel">
@@ -281,13 +281,19 @@ function metric(label, value, detailKey = "") {
 
 function followupsHtml() {
   const items = state.data.dashboard.followups || [];
+  const counts = state.data.dashboard.followupCounts || {};
   if (!items.length) {
     return `<div class="empty">${esc(t("No follow-ups due in the next month. Active institutions with annual scholar cycles will appear here."))}</div>`;
   }
-  return `<div class="record-list">${items.map((item) => `
+  return `
+    <div class="followup-summary">
+      <span>This month: ${esc(counts.thisMonth || 0)}</span>
+      <span>Next month: ${esc(counts.nextMonth || 0)}</span>
+    </div>
+    <div class="record-list">${items.map((item) => `
     <div class="record">
       <strong>${esc(item.institution_name)}</strong>
-      <span>${esc(item.followup_date)} · ${esc(item.days_until)} days · last recipient cycle ${esc(item.last_award_time)}</span>
+      <span>${esc(formatDate(item.followup_date))} · ${esc(item.cycle === "thisMonth" ? "This month" : "Next month")} · agreement cycle ${esc(formatDate(item.agreement_date))}</span>
     </div>
   `).join("")}</div>`;
 }
@@ -315,7 +321,7 @@ function renderInstitutions() {
       ["Continent", (r) => esc(r.continent)],
       ["Type", (r) => esc(r.scholarship_type)],
       ["Status", (r) => pill(r.status)],
-      ["Agreement Date", (r) => esc(r.agreement_date || "—")],
+      ["Agreement Date", (r) => esc(formatDate(r.agreement_date))],
     ],
   });
 }
@@ -331,9 +337,9 @@ function renderScholars() {
       ["Sex", (r) => esc(r.gender)],
       ["Major", (r) => esc(r.major || "—")],
       ["Contact", (r) => esc(r.contact || "—")],
-      ["Award Date", (r) => esc(r.award_date || "—")],
+      ["Award Date", (r) => esc(formatDate(r.award_date))],
       ["Institution", (r) => esc(r.institution_name || "—")],
-      ["Scholarship", (r) => `${esc(r.scholarship_plan)} · ${r.scholarships_issued || 0} issued`],
+      ["Scholarship", (r) => `${esc(r.scholarship_plan)} · ${esc(r.scholarship_progress || `${r.scholarships_issued || 0}/${r.scholarships_total || 1}`)} issued`],
     ],
   });
 }
@@ -582,6 +588,7 @@ function dashboardDetailTitle(kind) {
     institutions: "Partner Institutions",
     countries: "Countries Represented",
     pendingPrograms: "Pending Programs",
+    scholarshipsIssued: "Scholarships Issued",
   }[kind] || "Details";
 }
 
@@ -600,12 +607,22 @@ function dashboardDetailHtml(kind) {
     const rows = (details.countries && details.countries.length) ? details.countries : clientCountryDetails();
     return detailList(rows, ["Country", "Partner Institutions"], (row) => [row.country, row.institution_count]);
   }
+  if (kind === "scholarshipsIssued") {
+    const rows = (details.scholarshipsIssued && details.scholarshipsIssued.length) ? details.scholarshipsIssued : clientScholarshipIssuedDetails();
+    return detailList(rows, ["Scholar", "Institution", "Award Date", "Progress", "Next Issue"], (row) => [
+      row.scholar_name,
+      row.program_department ? `${row.institution_name} · ${row.program_department}` : row.institution_name,
+      formatDate(row.award_date),
+      row.progress,
+      formatDate(row.next_issue_date),
+    ]);
+  }
   const rows = (details.pendingPrograms && details.pendingPrograms.length) ? details.pendingPrograms : clientPendingDetails();
   return detailList(rows, ["Institution", "Program / Department", "Status", "Agreement Date"], (row) => [
     row.name,
     row.program_department || "—",
     row.status,
-    row.agreement_date || "—",
+    formatDate(row.agreement_date),
   ]);
 }
 
@@ -614,7 +631,7 @@ function normInstitutionName(name) {
 }
 
 function dashboardEligible(row) {
-  return ["Active", "Pending", "Pause", "Paused", "Completed"].includes(row.status);
+  return ["Active", "Pause", "Paused", "Completed"].includes(row.status);
 }
 
 function clientInstitutionDetails() {
@@ -639,8 +656,22 @@ function clientCountryDetails() {
 
 function clientPendingDetails() {
   return state.data.institutions
-    .filter((row) => ["Pending", "Awaiting Agreement"].includes(row.status))
+    .filter((row) => ["Awaiting Agreement"].includes(row.status))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function clientScholarshipIssuedDetails() {
+  return (state.data.scholars || [])
+    .filter((row) => Number(row.scholarships_issued || 0) > 0)
+    .map((row) => ({
+      scholar_name: row.full_name,
+      institution_name: row.institution_name,
+      program_department: "",
+      award_date: row.award_date,
+      progress: row.scholarship_progress || `${row.scholarships_issued || 0}/${row.scholarships_total || 1}`,
+      next_issue_date: row.next_issue_date,
+    }))
+    .sort((a, b) => a.scholar_name.localeCompare(b.scholar_name));
 }
 
 function detailList(rows, headers, mapRow) {
@@ -664,7 +695,7 @@ function detailHtml(type, record) {
     ["Continent", record.continent],
     ["Type", record.scholarship_type],
     ["Status", record.status],
-    ["Agreement Date", record.agreement_date || "—"],
+    ["Agreement Date", formatDate(record.agreement_date)],
     ["Scholarship Announced(total)", record.scholarships_issued || 0],
     ["Notes", record.notes || "—"],
   ] : type === "Scholar" ? [
@@ -672,11 +703,11 @@ function detailHtml(type, record) {
     ["Sex", record.gender],
     ["Major", record.major || "—"],
     ["Contact", record.contact || "—"],
-    ["Award Date", record.award_date || "—"],
+    ["Award Date", formatDate(record.award_date)],
     ["Institution", record.institution_name || "—"],
     ["Scholarship Duration", record.scholarship_plan],
     ["Number of Years", record.support_years],
-    ["Scholarships Issued", record.scholarships_issued || 0],
+    ["Scholarships Issued", record.scholarship_progress || `${record.scholarships_issued || 0}/${record.scholarships_total || 1}`],
     ["Notes", record.notes || "—"],
   ] : [
     ["Email", record.email],
