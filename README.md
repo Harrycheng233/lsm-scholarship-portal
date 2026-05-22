@@ -1,62 +1,237 @@
 # LSM Scholarship Portal
 
-A scholarship management portal for partner schools, programs, scholars, and awards.
+LSM Scholarship Portal 是一个内部奖学金管理系统，用于替代过去分散且难以维护的 Excel 工作流程，将奖学金项目管理集中到统一的在线平台中。
 
-## Start v2
+该系统用于支持基金会内部团队对合作院校、奖学金项目、学者信息、奖学金发放周期以及后续跟进工作的管理与统计。
 
-From this folder:
+---
 
-```bash
-uvicorn backend.app.main:app --reload --port 8788
-```
+## 系统用途
 
-Then open:
+核心目标是提升奖学金项目的管理效率、可视化程度与协作能力。
 
-```text
-http://127.0.0.1:8788
-```
+主要功能包括：
 
-The legacy v1.9 local server is still available in `server.py` while the FastAPI migration is underway.
+- 管理全球合作院校与奖学金项目
+- 记录奖学金获奖学者信息
+- 自动追踪奖学金发放周期
+- 提醒团队跟进新一轮学者 nomination
+- 提供可视化 dashboard 与统计图表
+- 导出 Excel 数据用于行政归档与汇报
+- 保留版本更新记录，方便内部维护
 
-## Data
+---
 
-- Records are stored in `lsm_portal.db`.
-- Daily workflow pages are `Dashboard`, `Institutions`, `Scholars`, `Statistics`, `Users`, and `Audit Log`.
-- Version Log opens from the lower-left dot, matching the v1.9 UI.
-- Scholars can be entered as one-time or multi-year recipients. Multi-year entries automatically create the corresponding scholarship issued records.
-- Dashboard includes an Excel backup export with `Schools` and `Scholars` tabs.
+## 访问方式
 
-## Production Notes
+本系统仅供内部授权成员使用。
 
-- Set `DATABASE_URL` to PostgreSQL for deployment.
-- Set `SECRET_KEY` in production.
-- Optional first admin user can be seeded with `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
-- Render deployment scaffolding is provided in `render.yaml`.
-- Render runs `alembic upgrade head` before starting the web service.
-- File upload has been removed from the product workflow; legacy document metadata remains only for safe migration compatibility.
+如需访问权限，请联系管理员（哈里）获取账户信息。
 
-## Admin and Migration Utilities
+管理员将为你分配：
 
-Create or update an admin user:
+- 登录邮箱 / 用户名
+- 密码
 
-```bash
-python3 scripts/create_admin.py --email admin@example.org
-```
+---
 
-User roles:
+## 在线地址
 
-- `admin`: full access, including audit log.
-- `editor`: create, update, delete, and export records.
-- `viewer`: read-only access to portal data.
+生产环境访问地址：
 
-Migrate an existing SQLite database into another SQLAlchemy database target:
+https://lsm-scholarship-portal.onrender.com
 
-```bash
-python3 scripts/migrate_sqlite_to_database.py --sqlite lsm_portal.db --database-url "$DATABASE_URL" --replace
-```
+---
 
-Check deployment readiness locally:
+## 关于首次打开速度较慢
 
-```bash
-python3 scripts/check_render_ready.py
-```
+当前系统部署在 Render 免费托管服务上。
+
+由于 Render 免费实例会在一段时间无人访问后自动进入休眠状态，因此如果系统约 **15 分钟以上无人访问**，下一位访问者首次打开页面时，可能需要等待 **40–60 秒** 左右让服务器重新唤醒。
+
+这是 Render 平台的正常行为，并不代表系统出现故障。
+
+服务器唤醒后，后续页面操作速度会恢复正常 （充值可无缝打开网站，价格$6/mo)
+
+## 关于数据库
+目前托管在supabase上面，有500mb的免费容量，应该够用了；密钥在管理员（哈里）那里，如果之后想迁移数据库请提前联系我谢谢。
+---
+
+## 核心功能
+
+### Dashboard 主页总览
+
+提供奖学金项目整体运营概览，包括：
+
+- 当前合作院校
+- 覆盖国家
+- 奖学金学者
+- 已发放奖学金
+- 待处理项目
+- 新学者跟进提醒
+
+Dashboard 中的多个指标支持点击查看详情。
+
+---
+
+### 院校管理
+
+用于管理基金会合作院校与奖学金项目，包括：
+
+- 院校名称
+- 学院 / 项目 / Department
+- 国家
+- 大洲
+- 奖学金类型
+- 项目状态
+- 合作日期
+- 项目生命周期
+
+支持的奖学金类型：
+
+- One-time（一次性项目）
+- Endowed（长期项目）
+- Multi-year（多年项目）
+
+支持的状态：
+
+- Active（进行中）
+- Paused（暂停）
+- Awaiting Agreement（待签约）
+- Completed（已完成）
+
+---
+
+### 学者管理
+
+用于管理奖学金获得者，包括：
+
+- 学者姓名
+- 性别
+- 专业
+- 联系方式
+- 所属院校
+- 获奖日期
+- 奖学金周期
+- 已发放进度
+- 下一次发放日期（适用于 multi-year）
+
+---
+
+### 数据统计
+
+统计页面提供可视化分析，包括：
+
+- 性别分布
+- 专业分布
+- 年度项目活动统计
+- 地理分布
+
+---
+
+### 数据导出
+
+系统支持导出 Excel，用于：
+
+- 行政归档
+- 内部汇报
+- 数据整理
+- 外部 reporting
+
+---
+
+## 技术架构
+
+当前 Version 2.0 技术架构：
+
+后端：
+- FastAPI
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+
+前端：
+- Vanilla JavaScript
+- HTML
+- CSS
+
+部署：
+- Render
+
+数据库：
+- PostgreSQL（云端托管）
+
+---
+
+## 版本更新记录
+
+### 2026-05-22 — v2.0 在线部署版本
+
+这是系统的重要里程碑版本！经过9个版本的迭代，如今已从本地单机工具正式升级为可在线访问的内部协作平台。
+
+完成内容包括：
+
+### 基础架构升级
+
+- 后端从本地 Python server 迁移至 FastAPI
+- 数据库从 SQLite 升级为 PostgreSQL
+- 引入 Alembic 数据迁移管理
+- 完成 Render 云端部署
+- 增加 health check 服务状态检测
+
+---
+
+### 权限与访问控制
+
+- 新增登录认证系统
+- 改为管理员统一分配账户权限
+- 限制未授权访问
+
+---
+
+### 数据与后台管理
+
+- 增加 SQLite → PostgreSQL 数据迁移工具
+- 增加 Excel 导出功能
+- 增加后台操作审计日志（Audit Log）
+
+---
+
+### 核心业务逻辑修复
+
+修复并恢复奖学金系统核心逻辑，包括：
+
+- 修复 multi-year scholarship 发放时间计算
+- 奖学金发放改为基于 scholar award date 自动计算
+- 修复 Dashboard 已发放奖学金统计
+- 修复 scholarship issued detail 聚合逻辑
+- 修复 Pending Agreements 分类逻辑
+- 修复 Follow-up reminder 提醒规则
+- 修复状态分类逻辑
+- 修复 Dashboard 指标计算错误
+- 修复双语界面显示问题
+- 修复统计页面显示回归问题
+
+---
+
+### 测试与稳定性
+
+- 为关键奖学金逻辑增加 regression tests
+- 提高生产环境稳定性
+- 完成部署验证
+
+---
+
+## 内部说明
+
+本系统将持续（maybe）迭代维护。
+
+后续将根据基金会内部运营需求，继续增加：
+
+- 数据录入自动化
+- 统计功能增强
+- 用户体验优化
+- 文件管理能力 （需升级database到付费版本）
+- 更稳定的生产部署方案
+
+---
