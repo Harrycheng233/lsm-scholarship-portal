@@ -121,3 +121,31 @@ class AuditLog(Base):
     entity_id: Mapped[int | None] = mapped_column(Integer)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class MessageThread(Base):
+    __tablename__ = "message_threads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+    author = relationship("User")
+    replies: Mapped[list["MessageReply"]] = relationship(back_populates="thread", cascade="all, delete-orphan")
+
+
+class MessageReply(Base):
+    __tablename__ = "message_replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("message_threads.id", ondelete="CASCADE"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+    thread: Mapped[MessageThread] = relationship(back_populates="replies")
+    author = relationship("User")

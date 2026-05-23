@@ -220,6 +220,34 @@ def version_log_rows(db: Session) -> list[dict]:
     return [row_dict(log, ["id", "version", "title", "notes", "released_at"]) for log in logs]
 
 
+def validate_version_log_payload(payload: dict) -> dict:
+    data = {
+        "version": clean(payload.get("version")),
+        "title": clean(payload.get("title")),
+        "notes": clean(payload.get("notes")),
+        "released_at": validate_date(payload.get("released_at"), "Release date", required=True),
+    }
+    if not data["version"]:
+        raise ValueError("Version is required.")
+    if len(data["version"]) > 40:
+        raise ValueError("Version must be 40 characters or fewer.")
+    if not data["title"]:
+        raise ValueError("Title is required.")
+    if not data["notes"]:
+        raise ValueError("Notes are required.")
+    return data
+
+
+def create_version_log(db: Session, payload: dict) -> dict:
+    data = validate_version_log_payload(payload)
+    if db.scalar(select(VersionLog).where(VersionLog.version == data["version"])):
+        raise ValueError("A version log with this version already exists.")
+    log = VersionLog(**data)
+    db.add(log)
+    db.commit()
+    return {"ok": True, "id": log.id}
+
+
 def count_by(items: list[dict], key_name: str, fallback: str = "Unspecified") -> list[dict]:
     counts: dict[str, int] = {}
     for item in items:

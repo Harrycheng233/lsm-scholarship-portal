@@ -75,3 +75,55 @@ def test_admin_can_read_audit_log():
         response = client.get("/api/audit-log", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
+
+
+def test_admin_can_create_version_log():
+    with TestClient(app) as client:
+        create_user("version-admin@example.org", "admin")
+        token = login(client, "version-admin@example.org")
+        headers = {"Authorization": f"Bearer {token}"}
+        response = client.post(
+            "/api/version-log",
+            headers=headers,
+            json={
+                "version": "test-version-admin",
+                "title": "Admin managed version log",
+                "released_at": "2026-05-22",
+                "notes": "Created from the admin UI.",
+            },
+        )
+        rows = client.get("/api/version-log", headers=headers)
+
+    assert response.status_code == 200
+    assert rows.status_code == 200
+    assert rows.json()[0]["version"] == "test-version-admin"
+
+
+def test_viewer_cannot_create_version_log():
+    with TestClient(app) as client:
+        create_user("version-viewer@example.org", "viewer")
+        token = login(client, "version-viewer@example.org")
+        response = client.post(
+            "/api/version-log",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"version": "viewer-version", "title": "No", "released_at": "2026-05-22", "notes": "No"},
+        )
+
+    assert response.status_code == 403
+
+
+def test_version_log_validation_rejects_empty_and_duplicate_values():
+    with TestClient(app) as client:
+        create_user("version-validation-admin@example.org", "admin")
+        token = login(client, "version-validation-admin@example.org")
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {
+            "version": "test-version-validation",
+            "title": "Validation",
+            "released_at": "2026-05-22",
+            "notes": "Valid notes.",
+        }
+
+        assert client.post("/api/version-log", headers=headers, json={**payload, "title": "   "}).status_code == 400
+        assert client.post("/api/version-log", headers=headers, json=payload).status_code == 200
+        assert client.post("/api/version-log", headers=headers, json=payload).status_code == 400

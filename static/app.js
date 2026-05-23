@@ -10,6 +10,7 @@ const state = {
     institutions: [],
     scholars: [],
     awards: [],
+    messageThreads: [],
     versionLogs: [],
     auditLogs: [],
     users: [],
@@ -20,6 +21,10 @@ const state = {
   sorts: {
     institutionsDate: "asc",
     scholarsDate: "asc",
+  },
+  messageBoard: {
+    mode: "list",
+    currentThread: null,
   },
 };
 
@@ -144,6 +149,19 @@ function formatDate(value) {
   return `${parts[1]}/${parts[2]}/${parts[0]}`;
 }
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const el = (tag, attrs = {}, children = []) => {
   const node = document.createElement(tag);
   Object.entries(attrs).forEach(([key, value]) => {
@@ -171,6 +189,7 @@ async function api(path, options = {}) {
 
 async function load() {
   state.data = await api("/api/bootstrap");
+  state.data.messageThreads = await api("/api/message-board/threads");
   state.currentUser = state.data.currentUser || null;
   state.authRequired = false;
   setLanguage(state.lang);
@@ -198,6 +217,7 @@ function render() {
   if (state.view === "Scholars") view.append(renderScholars());
   if (state.view === "Statistics") view.append(renderStatistics());
   if (state.view === "Users") view.append(renderUsers());
+  if (state.view === "Message Board") view.append(renderMessageBoard());
   if (state.view === "Version Log") view.append(renderVersionLog());
   if (state.view === "Audit Log") view.append(renderAuditLog());
 }
@@ -222,6 +242,8 @@ function renderMeta() {
   if (stamp) stamp.textContent = `${state.data.meta?.version || "v2.0"} · Chirui Cheng All Rights Reserved`;
   const dot = $("#versionLogDot");
   if (dot) dot.classList.toggle("active", state.view === "Version Log");
+  const messageDot = $("#messageBoardDot");
+  if (messageDot) messageDot.classList.toggle("active", state.view === "Message Board");
 }
 
 function canEdit() {
@@ -230,6 +252,10 @@ function canEdit() {
 
 function canExport() {
   return ["admin", "editor", "viewer"].includes(state.currentUser?.role);
+}
+
+function canPostMessage() {
+  return ["admin", "editor"].includes(state.currentUser?.role);
 }
 
 function isAdmin() {
@@ -418,6 +444,7 @@ function renderUsers() {
 function renderVersionLog() {
   const rows = state.data.versionLogs || [];
   const wrap = el("div");
+  wrap.className = "version-log-page";
   wrap.innerHTML = rows.length ? `
     <div class="record-list version-list">
       ${rows.map((row) => `
@@ -429,6 +456,25 @@ function renderVersionLog() {
       `).join("")}
     </div>
   ` : `<div class="empty">No version log entries yet.</div>`;
+  if (isAdmin()) {
+    wrap.insertAdjacentHTML("afterbegin", `
+      <section class="panel version-log-form-panel">
+        <div class="panel-head"><h3>Add Version Log</h3></div>
+        <div class="panel-body">
+          <form id="versionLogForm">
+            <div class="form-grid">
+              ${input("version", "Version", { required: true, max: "40" })}
+              ${input("released_at", "Release Date", { type: "date", required: true })}
+            </div>
+            ${input("title", "Title", { required: true })}
+            ${textarea("notes", "Notes")}
+            <div class="form-actions"><button class="primary-action" type="submit">Add Version Log</button></div>
+          </form>
+        </div>
+      </section>
+    `);
+    wrap.querySelector("#versionLogForm")?.addEventListener("submit", submitVersionLog);
+  }
   return wrap;
 }
 
@@ -452,6 +498,240 @@ function renderAuditLog() {
     </div>
   ` : `<div class="empty">No audit events yet.</div>`;
   return wrap;
+}
+
+async function submitVersionLog(event) {
+  event.preventDefault();
+  try {
+    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+    await api("/api/version-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await load();
+    toast("Version log added");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function renderMessageBoard() {
+  const wrap = el("div", { class: "message-board-page" });
+  if (state.messageBoard.mode === "detail" && state.messageBoard.currentThread) {
+    wrap.innerHTML = messageThreadDetailHtml(state.messageBoard.currentThread);
+    wireMessageBoardDetail(wrap);
+    return wrap;
+  }
+  wrap.innerHTML = messageBoardListHtml();
+  wireMessageBoardList(wrap);
+  return wrap;
+}
+
+function messageBoardListHtml() {
+  const threads = state.data.messageThreads || [];
+  return `
+    <div class="toolbar message-board-toolbar">
+      <div>
+        <p class="eyebrow">Internal</p>
+        <h2>Message Board</h2>
+      </div>
+      ${canPostMessage() ? `<button class="primary-action" type="button" id="newThreadButton">New Thread</button>` : ""}
+    </div>
+    <section id="newThreadPanel" class="panel message-form-panel" hidden>
+      <div class="panel-head"><h3>New Thread</h3></div>
+      <div class="panel-body">
+        <form id="newThreadForm">
+          ${input("subject", "Subject", { required: true, max: "200" })}
+          ${textarea("body", "Body")}
+          <div class="form-actions"><button class="secondary-action" type="button" id="cancelNewThread">Cancel</button><button class="primary-action" type="submit">Post Thread</button></div>
+        </form>
+      </div>
+    </section>
+    ${threads.length ? `
+      <div class="message-thread-list">
+        ${threads.map((thread) => `
+          <article class="message-thread-card">
+            <button class="message-thread-open" type="button" data-thread-id="${thread.id}">
+              <span class="message-thread-title">${esc(thread.subject)}</span>
+              <span class="message-thread-meta">${esc(thread.author_display_name)} · ${esc(formatDateTime(thread.created_at))} · Latest ${esc(formatDateTime(thread.latest_activity_at))} · ${esc(thread.reply_count)} replies</span>
+              <span class="message-body-preview">${esc(thread.body)}</span>
+            </button>
+          </article>
+        `).join("")}
+      </div>
+    ` : `<div class="empty">No message threads yet.</div>`}
+  `;
+}
+
+function messageThreadDetailHtml(thread) {
+  return `
+    <div class="toolbar message-board-toolbar">
+      <button class="secondary-action" type="button" id="backToThreads">Back</button>
+      <div class="message-thread-heading">
+        <p class="eyebrow">Thread</p>
+        <h2>${esc(thread.subject)}</h2>
+      </div>
+      ${isAdmin() ? `<div class="message-admin-actions"><button class="secondary-action" type="button" id="editThreadButton">Edit</button><button class="danger-action" type="button" id="deleteThreadButton">Delete</button></div>` : ""}
+    </div>
+    <article class="panel message-detail-panel">
+      <div class="panel-head">
+        <h3>${esc(thread.author_display_name)}</h3>
+        <span class="message-meta">${esc(formatDateTime(thread.created_at))}</span>
+      </div>
+      <div class="panel-body message-body">${esc(thread.body)}</div>
+    </article>
+    <section id="editThreadPanel" class="panel message-form-panel" hidden>
+      <div class="panel-head"><h3>Edit Thread</h3></div>
+      <div class="panel-body">
+        <form id="editThreadForm">
+          ${input("subject", "Subject", { required: true, max: "200", value: thread.subject })}
+          ${textarea("body", "Body", thread.body)}
+          <div class="form-actions"><button class="secondary-action" type="button" id="cancelEditThread">Cancel</button><button class="primary-action" type="submit">Save Thread</button></div>
+        </form>
+      </div>
+    </section>
+    <section class="message-replies">
+      <h3>Replies</h3>
+      ${(thread.replies || []).length ? thread.replies.map((reply) => `
+        <article class="message-reply">
+          <div class="message-reply-head">
+            <strong>${esc(reply.author_display_name)}</strong>
+            <span>${esc(formatDateTime(reply.created_at))}</span>
+            ${isAdmin() ? `<button class="danger-action compact" type="button" data-delete-reply="${reply.id}">Delete</button>` : ""}
+          </div>
+          <div class="message-body">${esc(reply.body)}</div>
+        </article>
+      `).join("") : `<div class="empty">No replies yet.</div>`}
+    </section>
+    ${canPostMessage() ? `
+      <section class="panel message-form-panel">
+        <div class="panel-head"><h3>Reply</h3></div>
+        <div class="panel-body">
+          <form id="replyForm">
+            ${textarea("body", "Reply")}
+            <div class="form-actions"><button class="primary-action" type="submit">Post Reply</button></div>
+          </form>
+        </div>
+      </section>
+    ` : ""}
+  `;
+}
+
+function messagePayload(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+async function refreshMessageThreads() {
+  state.data.messageThreads = await api("/api/message-board/threads");
+}
+
+async function openMessageThread(threadId) {
+  state.messageBoard.currentThread = await api(`/api/message-board/threads/${threadId}`);
+  state.messageBoard.mode = "detail";
+  render();
+}
+
+function wireMessageBoardList(root) {
+  root.querySelector("#newThreadButton")?.addEventListener("click", () => {
+    root.querySelector("#newThreadPanel").hidden = false;
+  });
+  root.querySelector("#cancelNewThread")?.addEventListener("click", () => {
+    root.querySelector("#newThreadPanel").hidden = true;
+  });
+  root.querySelector("#newThreadForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("/api/message-board/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(messagePayload(event.currentTarget)),
+      });
+      await refreshMessageThreads();
+      toast("Thread posted");
+      await openMessageThread(result.id);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  root.querySelectorAll("[data-thread-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openMessageThread(button.dataset.threadId);
+      } catch (error) {
+        toast(error.message);
+      }
+    });
+  });
+}
+
+function wireMessageBoardDetail(root) {
+  const thread = state.messageBoard.currentThread;
+  root.querySelector("#backToThreads")?.addEventListener("click", async () => {
+    state.messageBoard.mode = "list";
+    state.messageBoard.currentThread = null;
+    await refreshMessageThreads();
+    render();
+  });
+  root.querySelector("#editThreadButton")?.addEventListener("click", () => {
+    root.querySelector("#editThreadPanel").hidden = false;
+  });
+  root.querySelector("#cancelEditThread")?.addEventListener("click", () => {
+    root.querySelector("#editThreadPanel").hidden = true;
+  });
+  root.querySelector("#editThreadForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/message-board/threads/${thread.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(messagePayload(event.currentTarget)),
+      });
+      toast("Thread saved");
+      await openMessageThread(thread.id);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  root.querySelector("#deleteThreadButton")?.addEventListener("click", async () => {
+    if (!window.confirm("Delete this message thread?")) return;
+    try {
+      await api(`/api/message-board/threads/${thread.id}`, { method: "DELETE" });
+      state.messageBoard.mode = "list";
+      state.messageBoard.currentThread = null;
+      await refreshMessageThreads();
+      toast("Thread deleted");
+      render();
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  root.querySelector("#replyForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/message-board/threads/${thread.id}/replies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(messagePayload(event.currentTarget)),
+      });
+      toast("Reply posted");
+      await openMessageThread(thread.id);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  root.querySelectorAll("[data-delete-reply]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("Delete this reply?")) return;
+      try {
+        await api(`/api/message-board/replies/${button.dataset.deleteReply}`, { method: "DELETE" });
+        toast("Reply deleted");
+        await openMessageThread(thread.id);
+      } catch (error) {
+        toast(error.message);
+      }
+    });
+  });
 }
 
 function renderLogin() {
@@ -1131,6 +1411,18 @@ $("#versionLogDot")?.addEventListener("click", () => {
   state.view = "Version Log";
   closeDrawer();
   render();
+});
+$("#messageBoardDot")?.addEventListener("click", async () => {
+  try {
+    state.view = "Message Board";
+    state.messageBoard.mode = "list";
+    state.messageBoard.currentThread = null;
+    closeDrawer();
+    await refreshMessageThreads();
+    render();
+  } catch (error) {
+    toast(error.message);
+  }
 });
 $("#languageToggle")?.addEventListener("click", () => {
   setLanguage(state.lang === "zh" ? "en" : "zh");
