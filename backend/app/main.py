@@ -12,6 +12,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .models.auth import User
 from .models.core import Award, Program, Scholar, School, VersionLog
+from .services import message_board
 from .services import portal
 from .services.audit import audit_log_rows, record_audit
 from .services.exporter import build_backup_workbook
@@ -230,9 +231,82 @@ def version_log(_: User = Depends(require_user), db: Session = Depends(get_db)) 
     return portal.version_log_rows(db)
 
 
+@app.post("/api/version-log")
+def create_version_log(payload: dict, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = portal.create_version_log(db, payload)
+        record_audit(db, admin.email, "create", "VersionLog", result["id"], f"Created version log {payload.get('version', '')}.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/audit-log")
 def audit_log(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[dict]:
     return audit_log_rows(db)
+
+
+@app.get("/api/message-board/threads")
+def list_message_threads(_: User = Depends(require_user), db: Session = Depends(get_db)) -> list[dict]:
+    return message_board.list_threads(db)
+
+
+@app.post("/api/message-board/threads")
+def create_message_thread(payload: dict, user: User = Depends(require_editor), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = message_board.create_thread(db, payload, user.id)
+        record_audit(db, user.email, "create", "MessageThread", result["id"], f"Created message thread {payload.get('subject', '')}.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/message-board/threads/{thread_id}")
+def get_message_thread(thread_id: int, _: User = Depends(require_user), db: Session = Depends(get_db)) -> dict:
+    try:
+        return message_board.get_thread_detail(db, thread_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/api/message-board/threads/{thread_id}")
+def update_message_thread(thread_id: int, payload: dict, user: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = message_board.update_thread(db, thread_id, payload)
+        record_audit(db, user.email, "update", "MessageThread", thread_id, f"Updated message thread {payload.get('subject', '')}.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/message-board/threads/{thread_id}")
+def delete_message_thread(thread_id: int, user: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = message_board.delete_thread(db, thread_id)
+        record_audit(db, user.email, "delete", "MessageThread", thread_id, "Deleted message thread and replies.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/message-board/threads/{thread_id}/replies")
+def create_message_reply(thread_id: int, payload: dict, user: User = Depends(require_editor), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = message_board.create_reply(db, thread_id, payload, user.id)
+        record_audit(db, user.email, "create", "MessageReply", result["id"], f"Replied to message thread #{thread_id}.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/message-board/replies/{reply_id}")
+def delete_message_reply(reply_id: int, user: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    try:
+        result = message_board.delete_reply(db, reply_id)
+        record_audit(db, user.email, "delete", "MessageReply", reply_id, "Deleted message reply.", commit=True)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/institutions")
