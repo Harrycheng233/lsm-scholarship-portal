@@ -1,0 +1,18 @@
+name: Keep Scholarship Portal Alive
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database health endpoint
+        run: |
+          curl --fail \
+            --retry 3 \
+            --retry-delay 20 \
+            --max-time 180 \
+            https://lsm-scholarship-portal.onrender.com/api/health
